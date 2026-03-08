@@ -8,7 +8,7 @@ registerFont('C:/Windows/Fonts/arial.ttf', { family: 'Arial' });
 // Read token from environment variable
 const TOKEN = process.env.DISCORD_TOKEN; 
 const CLIENT_ID = "1474356483574595738";
-const GUILD_ID = "1439667549745971213";
+const GUILD_ID = "1479965805902037004";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
@@ -42,7 +42,7 @@ const commands = [
         .setRequired(true))
     .addIntegerOption(option =>
       option.setName('price')
-        .setDescription('Price in pence (e.g. 10 = £0.10)')
+        .setDescription('Price in pence (e.g. 10 = Â£0.10)')
         .setRequired(true))
     .addStringOption(option =>
       option.setName('text')
