@@ -1,0 +1,11 @@
+# Ignore Visual Studio files
+.vs/
+*.sln*
+*.user
+*.suo
+
+# Ignore node modules
+node_modules/
+
+# Ignore environment files
+.env
