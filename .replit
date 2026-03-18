@@ -5,3 +5,11 @@ expertMode = true
 [nix]
 channel = "stable-25_05"
 packages = ["pkg-config", "cairo", "pango", "libjpeg", "giflib", "librsvg", "pixman", "libuuid"]
+
+[deployment]
+deploymentTarget = "cloudrun"
+run = ["sh", "-c", "node index.js"]
+
+[[ports]]
+localPort = 3000
+externalPort = 80
