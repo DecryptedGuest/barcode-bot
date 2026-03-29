@@ -266,7 +266,7 @@ let y = padding;
   if (options.text) {
 
   ctx.fillStyle = "#000";
-  ctx.font = "28px sans-serif";
+  ctx.font = "28px Arial";
   ctx.textAlign = "center";
 
   /* WRAPPED TEXT */
@@ -290,7 +290,7 @@ let y = padding;
   /* PRICE (SAINS + TESCO FIXED PRICE) */
 
   ctx.fillStyle = "#000";
-  ctx.font = "bold 28px sans-serif";
+  ctx.font = "bold 28px Arial";
   ctx.textAlign = "center";
 
   let displayPrice = price;
