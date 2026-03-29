@@ -20,6 +20,13 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
+const { registerFont } = require("canvas");
+
+registerFont(
+  path.join(__dirname, "fonts/DejaVuSans.ttf"),
+  { family: "DejaVuSans" }
+);
+
 /* ---------------- CONFIG ---------------- */
 
 const TOKEN = process.env.DISCORD_TOKEN;
@@ -266,7 +273,7 @@ let y = padding;
   if (options.text) {
 
   ctx.fillStyle = "#000";
-  ctx.font = "28px Arial";
+  ctx.font = "28px DejaVuSans";
   ctx.textAlign = "center";
 
   /* WRAPPED TEXT */
@@ -290,7 +297,7 @@ let y = padding;
   /* PRICE (SAINS + TESCO FIXED PRICE) */
 
   ctx.fillStyle = "#000";
-  ctx.font = "bold 28px Arial";
+  ctx.font = "bold 28px DejaVuSans";
   ctx.textAlign = "center";
 
   let displayPrice = price;
