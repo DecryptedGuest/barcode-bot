@@ -297,7 +297,7 @@ let y = padding;
   /* PRICE (SAINS + TESCO FIXED PRICE) */
 
   ctx.fillStyle = "#000";
-  ctx.font = "bold 28px DejaVuSans";
+  ctx.font = "bold 28px DejaVuSans-Bold";
   ctx.textAlign = "center";
 
   let displayPrice = price;
