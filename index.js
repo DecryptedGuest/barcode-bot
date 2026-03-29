@@ -27,6 +27,11 @@ registerFont(
   { family: "DejaVuSans" }
 );
 
+registerFont(
+  path.join(__dirname, "fonts/DejaVuSans-Bold.ttf"),
+  { family: "DejaVuSans", weight: "bold" }
+);
+
 /* ---------------- CONFIG ---------------- */
 
 const TOKEN = process.env.DISCORD_TOKEN;
