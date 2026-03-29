@@ -23,13 +23,13 @@ const express = require("express");
 const { registerFont } = require("canvas");
 
 registerFont(
-  path.join(__dirname, "fonts/DejaVuSans.ttf"),
+  path.join(__dirname, "fonts", "DejaVuSans.ttf"),
   { family: "DejaVuSans" }
 );
 
 registerFont(
-  path.join(__dirname, "fonts/-Bold.ttf"),
-  { family: "", weight: "bold" }
+  path.join(__dirname, "fonts", "DejaVuSans-Bold.ttf"),
+  { family: "DejaVuSans", weight: "bold" }
 );
 
 /* ---------------- CONFIG ---------------- */
