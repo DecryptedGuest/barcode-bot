@@ -28,8 +28,8 @@ registerFont(
 );
 
 registerFont(
-  path.join(__dirname, "fonts/DejaVuSans-Bold.ttf"),
-  { family: "DejaVuSans", weight: "bold" }
+  path.join(__dirname, "fonts/-Bold.ttf"),
+  { family: "", weight: "bold" }
 );
 
 /* ---------------- CONFIG ---------------- */
@@ -278,7 +278,7 @@ let y = padding;
   if (options.text) {
 
   ctx.fillStyle = "#000";
-  ctx.font = "28px DejaVuSans";
+  ctx.font = "28px ";
   ctx.textAlign = "center";
 
   /* WRAPPED TEXT */
@@ -302,7 +302,7 @@ let y = padding;
   /* PRICE (SAINS + TESCO FIXED PRICE) */
 
   ctx.fillStyle = "#000";
-  ctx.font = "28px DejaVuSans-Bold";
+  ctx.font = "bold 28px DejaVuSans";
   ctx.textAlign = "center";
 
   let displayPrice = price;
