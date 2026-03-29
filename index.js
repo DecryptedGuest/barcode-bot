@@ -1,18 +1,17 @@
 const {
-  Client,
-  GatewayIntentBits,
-  AttachmentBuilder,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  EmbedBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  ActionRowBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
-  StringSelectMenuBuilder
+Client,
+GatewayIntentBits,
+AttachmentBuilder,
+REST,
+Routes,
+SlashCommandBuilder,
+ButtonBuilder,
+ButtonStyle,
+ActionRowBuilder,
+ModalBuilder,
+TextInputBuilder,
+TextInputStyle,
+StringSelectMenuBuilder
 } = require("discord.js");
 
 const { createCanvas, loadImage } = require("canvas");
@@ -21,349 +20,915 @@ const fs = require("fs");
 const path = require("path");
 const express = require("express");
 
+/* ---------------- CONFIG ---------------- */
+
 const TOKEN = process.env.DISCORD_TOKEN;
+
 const CLIENT_ID = "1474356483574595738";
 const GUILD_ID = "1479965805902037004";
+const PANEL_ROLE_ID = "1479969872237559898";
+
 const LOG_CHANNEL_ID = "1482471116877594674";
 
-const client = new Client({ intents: [GatewayIntentBits.Guilds] });
+const HISTORY_PAGE_SIZE = 24;
+
+const client = new Client({
+intents: [GatewayIntentBits.Guilds]
+});
+
+/* ---------------- LOGGING ---------------- */
+
+async function sendLog(client, message) {
+
+try {
+
+const channel =
+await client.channels.fetch(
+LOG_CHANNEL_ID
+);
+
+if (!channel) return;
+
+const timestamp =
+new Date().toISOString();
+
+await channel.send({
+content:
+`[${timestamp}]\n${message}`
+});
+
+}
+catch(err){
+console.error("Log error:", err);
+}
+
+}
 
 /* ---------------- HISTORY ---------------- */
-const historyPath = path.join(__dirname, "history.json");
+
+const historyPath =
+path.join(__dirname, "history.json");
 
 function loadHistory() {
-  if (!fs.existsSync(historyPath)) return {};
-  return JSON.parse(fs.readFileSync(historyPath));
+if (!fs.existsSync(historyPath))
+return {};
+return JSON.parse(
+fs.readFileSync(historyPath)
+);
 }
 
 function saveHistory(data) {
-  fs.writeFileSync(historyPath, JSON.stringify(data, null, 2));
+fs.writeFileSync(
+historyPath,
+JSON.stringify(data, null, 2)
+);
 }
 
-function addHistory(userId, entry) {
-  const history = loadHistory();
-  if (!history[userId]) history[userId] = [];
-  history[userId].push(entry);
-  saveHistory(history);
+function addHistory(userId, panelType, entry) {
+
+const history = loadHistory();
+
+if (!history[userId])
+history[userId] = [];
+
+history[userId].push({
+panelType,
+...entry
+});
+
+saveHistory(history);
+
 }
 
-function getHistory(userId) {
-  const history = loadHistory();
-  return (history[userId] || []).slice().reverse(); // recent first
+function getHistory(userId, panelType) {
+
+const history = loadHistory();
+
+return (history[userId] || [])
+.filter(h => h.panelType === panelType)
+.slice()
+.reverse();
+
 }
 
-/* ---------------- BARCODE ---------------- */
-const fetch = require("node-fetch"); // make sure to npm install node-fetch@2
+/* ---------------- VALIDATION ---------------- */
+
+function isValidHex(hex) {
+return /^#?[0-9A-F]{6}$/i.test(hex);
+}
+
+/* FIXED IMAGE VALIDATION */
+
+function isValidImageUrl(url) {
+return /^https?:\/\/.+/i.test(url);
+}
+
+/* TEXT WRAP FUNCTION */
+
+function drawWrappedText(
+ctx,
+text,
+x,
+y,
+maxWidth,
+lineHeight
+) {
+
+const words = text.split(" ");
+let line = "";
+let lines = [];
+
+for (let n = 0; n < words.length; n++) {
+
+const testLine =
+line + words[n] + " ";
+
+const metrics =
+ctx.measureText(testLine);
+
+const testWidth =
+metrics.width;
+
+if (
+testWidth > maxWidth &&
+n > 0
+) {
+
+lines.push(line);
+line = words[n] + " ";
+
+}
+else {
+
+line = testLine;
+
+}
+
+}
+
+lines.push(line);
+
+/* DRAW LINES */
+
+for (let i = 0; i < lines.length; i++) {
+
+ctx.fillText(
+lines[i],
+x,
+y + (i * lineHeight)
+);
+
+}
+
+return lines.length * lineHeight;
+
+}
+
+/* ---------------- BARCODE GENERATOR ---------------- */
 
 async function generateBarcode(product, price, options) {
-const width = 650;
-const height = 420;
-const canvas = createCanvas(width, height);
-const ctx = canvas.getContext("2d");
 
-ctx.fillStyle = options.bgColor || "#ffffff";
-ctx.fillRect(0, 0, width, height);
+const canvasWidth = 650;
+const padding = 40;
 
-let y = 40;
+const textZoneHeight = 0;
+const priceZoneHeight = 60;
+  /* FIXED IMAGE FRAME */
 
-// --- TEXT WITH WRAPPING ---
-if (options.text) {
-ctx.fillStyle = options.textColor || "#000000";
-let fontSize = 28;
-ctx.font = `${fontSize}px Arial`;
-ctx.textAlign = "center";
+  const imageFrameHeight = 200;
+  const imageFrameWidth = canvasWidth - 80;
 
-const maxTextWidth = width - 40;
-const lines = [];
-const words = options.text.split(" ");
-let currentLine = "";
+  let img = null;
 
-for (let word of words) {
-  const testLine = currentLine ? currentLine + " " + word : word;
-  const metrics = ctx.measureText(testLine);
-  if (metrics.width > maxTextWidth) {
-    if (currentLine) lines.push(currentLine);
-    currentLine = word;
-  } else {
-    currentLine = testLine;
+  if (options.imageUrl) {
+
+  try {
+
+  const response =
+  await fetch(options.imageUrl);
+
+  if (response.ok) {
+
+  const buffer =
+  Buffer.from(
+  await response.arrayBuffer()
+  );
+
+  img =
+  await loadImage(buffer);
+
   }
+
+  }
+  catch(err) {
+
+  console.log("Image load failed");
+
+  }
+
+  }
+
+/* CALCULATE SPACE */
+
+const barcodeHeight = 140;
+
+  const canvasHeight =
+  padding +
+  120 + /* extra text space */
+  priceZoneHeight +
+  imageFrameHeight +
+  barcodeHeight +
+  padding;
+
+/* CREATE CANVAS */
+
+const canvas =
+createCanvas(
+canvasWidth,
+canvasHeight
+);
+
+const ctx =
+canvas.getContext("2d");
+
+ctx.fillStyle = "#ffffff";
+ctx.fillRect(
+0,
+0,
+canvasWidth,
+canvasHeight
+);
+
+let y = padding;
+
+/* TEXT */
+
+  if (options.text) {
+
+  ctx.fillStyle = "#000";
+  ctx.font = "28px Arial";
+  ctx.textAlign = "center";
+
+  /* WRAPPED TEXT */
+
+  const textHeight =
+  drawWrappedText(
+  ctx,
+  options.text,
+  canvasWidth / 2,
+  y,
+  canvasWidth - 80,
+  34
+  );
+
+  /* MOVE Y BASED ON TEXT SIZE */
+
+  y += textHeight;
+
+  }
+
+  /* PRICE (SAINS + TESCO FIXED PRICE) */
+
+  ctx.fillStyle = "#000";
+  ctx.font = "bold 28px Arial";
+  ctx.textAlign = "center";
+
+  let displayPrice = price;
+
+  /* FORCE TESCO PRICE */
+
+  if (options.panelType === "tesco") {
+
+  displayPrice = 4;
+
+  }
+
+  ctx.fillText(
+  `£${(displayPrice / 100).toFixed(2)}`,
+  canvasWidth / 2,
+  y
+  );
+
+  y += priceZoneHeight;
+  /* IMAGE FRAME */
+
+  const frameX = 40;
+  const frameY = y;
+
+  if (img) {
+
+  /* SCALE IMAGE TO FIT FRAME */
+
+  const scale =
+  Math.min(
+  imageFrameWidth / img.width,
+  imageFrameHeight / img.height
+  );
+
+  const w = img.width * scale;
+  const h = img.height * scale;
+
+  /* CENTER IMAGE IN FRAME */
+
+  const imgX =
+  frameX +
+  (imageFrameWidth - w) / 2;
+
+  const imgY =
+  frameY +
+  (imageFrameHeight - h) / 2;
+
+  ctx.drawImage(
+  img,
+  imgX,
+  imgY,
+  w,
+  h
+  );
+
+  }
+
+  /* MOVE Y BELOW FRAME */
+
+  y += imageFrameHeight;
+
+/* BARCODE */
+
+function padLeft(str, len) {
+return str.toString().padStart(len, "0");
 }
-if (currentLine) lines.push(currentLine);
 
-const maxLines = 4; // max lines for text
-const displayLines = lines.slice(0, maxLines);
+let numericProduct =
+product.replace(/\D/g, "") || "0";
 
-for (let line of displayLines) {
-  ctx.fillText(line, width / 2, y);
-  y += fontSize + 5;
-}
+numericProduct =
+padLeft(numericProduct, 13);
 
-if (lines.length > maxLines) {
-  ctx.fillText("…", width / 2, y);
-  y += fontSize + 5;
-}
+const paddedPrice =
+padLeft(price || 0, 6);
 
-y += 10; // extra padding after text
-}
+const baseNumber =
+options.panelType === "tesco"
+? `971${numericProduct}70000408`
+: `91${numericProduct}${paddedPrice}`;
 
-// --- IMAGE ---
-if (options.imageUrl) {
-try {
-  const response = await fetch(options.imageUrl);
-  if (!response.ok) throw new Error("Image fetch failed");
-  const buffer = await response.buffer();
-  const img = await loadImage(buffer);
+const barcodeCanvas =
+createCanvas(
+canvasWidth - 80,
+barcodeHeight
+);
 
-  const imgWidth = 150;
-  const imgHeight = 100;
-  ctx.drawImage(img, (width - imgWidth) / 2, y, imgWidth, imgHeight);
-  y += imgHeight + 30;
-} catch (err) {
-  console.error("Failed to load image:", err.message);
-}
-}
-
-// --- PRICE ---
-price = parseInt(price);
-if (isNaN(price)) price = 0;
-ctx.fillStyle = options.textColor || "#000000";
-ctx.font = "bold 28px Arial";
-ctx.textAlign = "center";
-ctx.fillText(`£${(price / 100).toFixed(2)}`, width / 2, y);
-y += 50;
-
-// --- BARCODE ---
-function padLeft(str, length) { return str.toString().padStart(length, "0"); }
-function calculateCheckDigit(input) {
-let sum = 0;
-for (let i = 0; i < input.length; i++) {
-  const digit = parseInt(input[input.length - 1 - i], 10);
-  sum += digit * ((i % 2 === 0) ? 3 : 1);
-}
-return (10 - (sum % 10)) % 10;
-}
-
-let numericProduct = product.replace(/\D/g, "") || "0";
-numericProduct = padLeft(numericProduct, 13);
-const paddedPrice = padLeft(price, 6);
-const baseNumber = `91${numericProduct}${paddedPrice}`;
-const checkDigit = calculateCheckDigit(baseNumber);
-const fullBarcode = `${baseNumber}${checkDigit}`;
-
-// Dynamic barcode scaling based on remaining space
-const barcodeHeight = Math.min(120, height - y - 20);
-const barcodeCanvas = createCanvas(500, barcodeHeight);
-JsBarcode(barcodeCanvas, fullBarcode, {
+JsBarcode(
+barcodeCanvas,
+baseNumber,
+{
 format: "CODE128",
 displayValue: true,
 fontSize: 16,
 width: 2,
 height: barcodeHeight - 40,
 margin: 5,
-lineColor: options.barcodeColor || "#000000"
-});
+lineColor:
+options.barcodeColor || "#000000"
+}
+);
 
-ctx.drawImage(barcodeCanvas, (width - barcodeCanvas.width) / 2, y);
+/* FIXED CENTERING */
 
-return canvas.toBuffer();
+const barcodeX =
+(canvasWidth - barcodeCanvas.width) / 2;
+
+ctx.drawImage(
+barcodeCanvas,
+barcodeX,
+y
+);
+
+return {
+buffer: canvas.toBuffer(),
+fullBarcode: baseNumber
+};
+
 }
 
-/* ---------------- COMMAND REGISTRATION ---------------- */
+/* ---------------- COMMAND REG ---------------- */
+
 const commands = [
-  new SlashCommandBuilder()
-    .setName("barcodepanel")
-    .setDescription("Send the barcode generator panel")
-].map(c => c.toJSON());
 
-const rest = new REST({ version: "10" }).setToken(TOKEN);
+new SlashCommandBuilder()
+.setName("sainspanel")
+.setDescription("Open Sains panel"),
 
-(async () => {
-  try {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: [] });
-    console.log("Cleared old commands.");
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log("Registered /barcodepanel command.");
-  } catch (error) {
-    console.error(error);
-  }
+new SlashCommandBuilder()
+.setName("tescopanel")
+.setDescription("Open Tesco panel")
+
+].map(c=>c.toJSON());
+
+const rest =
+new REST({version:"10"})
+.setToken(TOKEN);
+
+(async()=>{
+
+await rest.put(
+Routes.applicationGuildCommands(
+CLIENT_ID,
+GUILD_ID
+),
+{body:commands}
+);
+
 })();
 
-/* ---------------- INTERACTIONS ---------------- */
-client.on("interactionCreate", async interaction => {
-  const logChannel = await client.channels.fetch(LOG_CHANNEL_ID).catch(()=>null);
+client.on("interactionCreate",
+async interaction=>{
 
-  /* PANEL */
-  if (interaction.isChatInputCommand() && interaction.commandName === "barcodepanel") {
-    const embed = new EmbedBuilder()
-      .setTitle("Sainsbury's Barcode Generator")
-      .setColor("Orange")
-      .setDescription("Generate Barcodes or View your History");
+try {
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("generate").setLabel("Generate Barcode").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("history").setLabel("View My History").setStyle(ButtonStyle.Secondary)
-    );
+  /* ===================== */
+  /* SEND TO DM BUTTON */
+  /* ===================== */
 
-    await interaction.reply({ embeds: [embed], components: [row] });
-    if (logChannel)
-      logChannel.send({ embeds: [ new EmbedBuilder().setColor("Orange").setTitle("Panel Sent").setDescription(`${interaction.user.tag}`).setTimestamp() ] });
+  if (
+  interaction.isButton() &&
+  interaction.customId.startsWith("dm_send_")
+  ) {
+
+  const parts =
+  interaction.customId.split("_");
+
+  const panelType = parts[2];
+  const index = parseInt(parts[3]);
+
+  const history =
+  getHistory(
+  interaction.user.id,
+  panelType
+  );
+
+  const entry =
+  history[index];
+
+  if (!entry) {
+
+  return interaction.reply({
+  content:"History not found.",
+  ephemeral:true
+  });
+
   }
 
-  /* BUTTONS */
-  if (interaction.isButton()) {
+  const user =
+  await client.users.fetch(
+  interaction.user.id
+  );
 
-    /* GENERATE MODAL */
-    if (interaction.customId === "generate") {
-      const modal = new ModalBuilder().setCustomId("barcodeModal").setTitle("Generate Barcode");
+  const { buffer } =
+  await generateBarcode(
+  entry.product,
+  entry.price,
+  entry
+  );
 
-      const product = new TextInputBuilder().setCustomId("product").setLabel("Product Barcode").setStyle(TextInputStyle.Short).setRequired(true);
-      const price = new TextInputBuilder().setCustomId("price").setLabel("Price in Pence").setStyle(TextInputStyle.Short).setRequired(true);
-      const text = new TextInputBuilder().setCustomId("text").setLabel("Text - Optional").setStyle(TextInputStyle.Short).setRequired(false);
-      const image = new TextInputBuilder().setCustomId("image").setLabel("Image URL - Optional").setStyle(TextInputStyle.Short).setRequired(false);
-      const colour = new TextInputBuilder().setCustomId("colour").setLabel("Barcode Colour (hex) - Optional").setStyle(TextInputStyle.Short).setRequired(false);
+  const deleteRow =
+  new ActionRowBuilder()
+  .addComponents(
 
-      modal.addComponents(
-        new ActionRowBuilder().addComponents(product),
-        new ActionRowBuilder().addComponents(price),
-        new ActionRowBuilder().addComponents(text),
-        new ActionRowBuilder().addComponents(image),
-        new ActionRowBuilder().addComponents(colour)
-      );
+  new ButtonBuilder()
+  .setCustomId("delete_dm_barcode")
+  .setLabel("Delete")
+  .setStyle(ButtonStyle.Danger)
 
-      return interaction.showModal(modal);
-    }
+  );
 
-    /* VIEW HISTORY */
-    if (interaction.customId === "history") {
-      const history = getHistory(interaction.user.id);
-      if (!history.length) return interaction.reply({ content: "No history yet.", ephemeral: true });
+  await user.send({
 
-      const options = history.map((h, i) => ({ label: `${i+1}. ${h.product} (£${(h.price/100).toFixed(2)})`, value: String(i) }));
-      const row = new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder().setCustomId("selectHistory").setPlaceholder("Select a code to view details").addOptions(options)
-      );
+  files:[
+  new AttachmentBuilder(
+  buffer,
+  { name:"barcode.png" }
+  )
+  ],
 
-      await interaction.reply({ content: "Select a code:", components: [row], ephemeral: true });
-      if (logChannel)
-        logChannel.send({ embeds: [ new EmbedBuilder().setColor("Orange").setTitle("History Viewed").setDescription(`${interaction.user.tag}`).setTimestamp() ] });
-    }
+  components:[deleteRow]
 
-    /* SEND TO DMs */
-    if (interaction.customId.startsWith("senddm_")) {
-      const parts = interaction.customId.split("_");
-      const userId = parts[1];
-      const idx = parseInt(parts[2] ?? -1);
+  });
 
-      if (interaction.user.id !== userId) return;
+  return interaction.reply({
+  content:"Sent to your DMs.",
+  ephemeral:true
+  });
 
-      const historyData = loadHistory();
-      const userHistory = historyData[userId] || [];
-      let entry;
-      if (idx >= 0) entry = userHistory[userHistory.length - 1 - idx];
-      else entry = userHistory[userHistory.length - 1];
-      if (!entry) return interaction.reply({ content: "No history entry found.", ephemeral: true });
-
-      const buffer = await generateBarcode(entry.product, entry.price, { text: entry.text, imageUrl: entry.imageUrl, barcodeColor: "#000000" });
-      const attachment = new AttachmentBuilder(buffer, { name: "barcode.png" });
-
-      entry.inDM = true;
-      saveHistory(historyData);
-
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`deletedm_${userId}_${idx}`).setLabel("Delete").setStyle(ButtonStyle.Danger)
-      );
-
-      await interaction.user.send({ files: [attachment], components: [row] }).catch(() => {});
-
-      if (!interaction.replied) await interaction.reply({ content: "Sent to your DMs.", ephemeral: true });
-      else if (!interaction.deferred) await interaction.editReply({ content: "Sent to your DMs." });
-
-      if (logChannel)
-        logChannel.send({ embeds: [ new EmbedBuilder().setColor("Orange").setTitle("Barcode Sent to DM").setDescription(`${interaction.user.tag} sent a barcode to DMs.`).setTimestamp() ] });
-    }
-
-    /* DELETE DM */
-    if (interaction.customId.startsWith("deletedm_")) {
-      const parts = interaction.customId.split("_");
-      const userId = parts[1];
-      const idx = parseInt(parts[2] ?? -1);
-
-      const historyData = loadHistory();
-      const userHistory = historyData[userId] || [];
-      let entry;
-      if (idx >= 0) entry = userHistory[userHistory.length - 1 - idx];
-      else entry = userHistory[userHistory.length - 1];
-      if (entry) entry.inDM = false;
-      saveHistory(historyData);
-
-      await interaction.message.delete().catch(() => {});
-    }
   }
 
-  /* MODAL SUBMIT */
-  if (interaction.isModalSubmit() && interaction.customId === "barcodeModal") {
-    const product = interaction.fields.getTextInputValue("product");
-    const price = parseInt(interaction.fields.getTextInputValue("price"));
-    const text = interaction.fields.getTextInputValue("text");
-    const image = interaction.fields.getTextInputValue("image");
-    const colour = interaction.fields.getTextInputValue("colour");
+/* DELETE DM IMAGE */
 
-    const buffer = await generateBarcode(product, price, { text, imageUrl: image, barcodeColor: colour || "#000000" });
-    const attachment = new AttachmentBuilder(buffer, { name: "barcode.png" });
+if (
+interaction.isButton() &&
+interaction.customId === "delete_dm_barcode"
+) {
 
-    addHistory(interaction.user.id, { product, price, text, imageUrl: image, time: Date.now(), inDM: false });
+await interaction.message.delete();
+return;
 
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`senddm_${interaction.user.id}`).setLabel("Send to My DMs").setStyle(ButtonStyle.Success)
-    );
+}
 
-    await interaction.reply({ content: "Barcode Generated Successfully:", files: [attachment], components: [row], ephemeral: true });
+/* COMMAND */
 
-    if (logChannel)
-      logChannel.send({ embeds: [ new EmbedBuilder().setColor("Orange").setTitle("Barcode Generated").setDescription(`${interaction.user.tag}\nProduct: ${product}\nPrice: £${(price/100).toFixed(2)}`).setImage("attachment://barcode.png").setTimestamp() ], files: [attachment] });
+if (interaction.isChatInputCommand()) {
+
+if (
+!interaction.member.roles.cache
+.has(PANEL_ROLE_ID)
+) {
+
+return interaction.reply({
+content:"No permission.",
+ephemeral:true
+});
+
+}
+
+const panelType =
+interaction.commandName==="tescopanel"
+? "tesco"
+: "sains";
+
+const row =
+new ActionRowBuilder()
+.addComponents(
+
+new ButtonBuilder()
+.setCustomId(
+`generate_${panelType}`
+)
+.setLabel("Generate")
+.setStyle(ButtonStyle.Primary),
+
+new ButtonBuilder()
+.setCustomId(
+`history_${panelType}_0`
+)
+.setLabel("History")
+.setStyle(ButtonStyle.Secondary)
+
+);
+
+return interaction.reply({
+content:
+`${panelType.toUpperCase()} PANEL`,
+components:[row]
+});
+
+}
+
+/* BUTTON HANDLING */
+
+if (interaction.isButton()) {
+
+const parts =
+interaction.customId.split("_");
+
+const action = parts[0];
+const panelType = parts[1];
+
+/* GENERATE BUTTON */
+
+if (action === "generate") {
+
+const modal =
+new ModalBuilder()
+.setCustomId(
+`modal_${panelType}`
+)
+.setTitle("Generate Barcode");
+
+const product =
+new TextInputBuilder()
+.setCustomId("product")
+.setLabel("EAN-13 Barcode")
+.setStyle(TextInputStyle.Short)
+.setRequired(true);
+
+modal.addComponents(
+new ActionRowBuilder().addComponents(product)
+);
+
+if (panelType === "sains") {
+
+const price =
+new TextInputBuilder()
+.setCustomId("price")
+.setLabel("Price (pence)")
+.setStyle(TextInputStyle.Short)
+.setRequired(true);
+
+modal.addComponents(
+new ActionRowBuilder().addComponents(price)
+);
+
+}
+
+const text =
+new TextInputBuilder()
+.setCustomId("text")
+.setLabel("Text - Optional")
+.setStyle(TextInputStyle.Short)
+.setRequired(false);
+
+const image =
+new TextInputBuilder()
+.setCustomId("image")
+.setLabel("Image URL - Optional")
+.setStyle(TextInputStyle.Short)
+.setRequired(false);
+
+const colour =
+new TextInputBuilder()
+.setCustomId("colour")
+.setLabel("Barcode Hex - Optional")
+.setStyle(TextInputStyle.Short)
+.setRequired(false);
+
+modal.addComponents(
+new ActionRowBuilder().addComponents(text),
+new ActionRowBuilder().addComponents(image),
+new ActionRowBuilder().addComponents(colour)
+);
+
+return interaction.showModal(modal);
+
+}
+
+/* HISTORY BUTTON */
+
+if (action === "history") {
+
+const history =
+getHistory(
+interaction.user.id,
+panelType
+);
+
+if (!history.length) {
+
+return interaction.reply({
+content: "No history found.",
+ephemeral: true
+});
+
+}
+
+const options =
+history.slice(0,24).map((h,i)=>({
+
+  label:
+  (h.fullBarcode || "Barcode").substring(0,25),
+
+value:
+String(i)
+
+}));
+
+const select =
+new StringSelectMenuBuilder()
+.setCustomId(
+`select_${panelType}`
+)
+.addOptions(options);
+
+return interaction.reply({
+
+content: "Select history:",
+
+components: [
+new ActionRowBuilder()
+.addComponents(select)
+],
+
+ephemeral: true
+
+});
+
+}
+
+}
+
+  /* ===================== */
+  /* HISTORY SELECT MENU */
+  /* ===================== */
+
+  if (interaction.isStringSelectMenu()) {
+
+  const panelType =
+  interaction.customId.split("_")[1];
+
+  const history =
+  getHistory(
+  interaction.user.id,
+  panelType
+  );
+
+  const index =
+  parseInt(interaction.values[0]);
+
+  const entry =
+  history[index];
+
+  if (!entry) {
+
+  return interaction.reply({
+  content:"History not found.",
+  ephemeral:true
+  });
+
   }
 
-  /* HISTORY SELECT */
-  if (interaction.isStringSelectMenu() && interaction.customId === "selectHistory") {
-    const idx = parseInt(interaction.values[0]);
-    const history = getHistory(interaction.user.id);
-    const entry = history[idx];
+  const { buffer } =
+  await generateBarcode(
+  entry.product,
+  entry.price,
+  entry
+  );
 
-    const buffer = await generateBarcode(entry.product, entry.price, { text: entry.text, imageUrl: entry.imageUrl, barcodeColor: "#000000" });
-    const attachment = new AttachmentBuilder(buffer, { name: "barcode.png" });
+  /* CREATE DM BUTTON */
 
-    const embed = new EmbedBuilder()
-      .setTitle(`Barcode Info: ${entry.product}`)
-      .setColor("Orange")
-      .addFields(
-        { name: "Product", value: entry.product, inline: true },
-        { name: "Price", value: `£${(entry.price/100).toFixed(2)}`, inline: true },
-        { name: "Text", value: entry.text || "None", inline: true },
-        { name: "Image URL", value: entry.imageUrl || "None", inline: true },
-        { name: "In DMs", value: entry.inDM ? "Yes" : "No", inline: true }
-      )
-      .setImage("attachment://barcode.png");
+  const dmRow =
+  new ActionRowBuilder()
+  .addComponents(
 
-    const sendRow = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId(`senddm_${interaction.user.id}_${idx}`).setLabel("Send to My DMs").setStyle(ButtonStyle.Success)
-    );
+  new ButtonBuilder()
+  .setCustomId(
+  `dm_send_${panelType}_${index}`
+  )
+  .setLabel("Send to DMs")
+  .setStyle(ButtonStyle.Success)
 
-    // Remove old senddm buttons from existing components
-    const newComponents = interaction.message.components.map(r => {
-      const filtered = r.components.filter(c => !c.customId.startsWith("senddm_"));
-      return new ActionRowBuilder().addComponents(filtered);
-    }).filter(r => r.components.length > 0);
+  );
 
-    newComponents.unshift(sendRow);
+  return interaction.reply({
 
-    await interaction.update({ embeds: [embed], files: [attachment], components: newComponents });
+  files:[
+  new AttachmentBuilder(
+  buffer,
+  { name:"barcode.png" }
+  )
+  ],
+
+  components:[dmRow],
+
+  ephemeral:true
+
+  });
+
   }
-}); // End of interactionCreate
+  
+/* MODAL SUBMIT */
 
-/* LOGIN */
-client.login(TOKEN);
+if (interaction.isModalSubmit()) {
 
-/* WEB SERVER */
+const panelType =
+interaction.customId.split("_")[1];
+
+const product =
+interaction.fields.getTextInputValue("product");
+
+const text =
+interaction.fields.getTextInputValue("text");
+
+const image =
+interaction.fields.getTextInputValue("image");
+
+const colour =
+interaction.fields.getTextInputValue("colour");
+
+let price = 0;
+
+if (panelType === "sains") {
+
+price =
+interaction.fields
+.getTextInputValue("price");
+
+}
+
+  if (panelType === "tesco") {
+
+  price = 4; // Always £0.04
+
+  }
+
+if (
+image &&
+!isValidImageUrl(image)
+) {
+
+return interaction.reply({
+content: "Invalid image URL.",
+ephemeral: true
+});
+
+}
+
+const { buffer, fullBarcode } =
+await generateBarcode(
+product,
+price,
+{
+text,
+imageUrl: image,
+barcodeColor: colour,
+panelType
+}
+);
+
+addHistory(
+interaction.user.id,
+panelType,
+{
+product,
+price,
+text,
+imageUrl: image,
+barcodeColor: colour,
+fullBarcode
+}
+);
+
+  /* GET LAST HISTORY INDEX */
+
+  const history =
+  getHistory(
+  interaction.user.id,
+  panelType
+  );
+
+  const historyIndex =
+  history.length - 1;
+
+  /* SAFE SHORT CUSTOM ID */
+
+  const dmRow =
+  new ActionRowBuilder()
+  .addComponents(
+
+  new ButtonBuilder()
+  .setCustomId(
+  `dm_send_${panelType}_${historyIndex}`
+  )
+  .setLabel("Send to DMs")
+  .setStyle(ButtonStyle.Success)
+
+  );
+
+return interaction.reply({
+
+files: [
+new AttachmentBuilder(
+buffer,
+{ name: "barcode.png" }
+)
+],
+
+components:[dmRow],
+
+ephemeral: true
+
+});
+
+}
+
+}
+
+catch(err){
+
+console.error(err);
+
+if(
+!interaction.replied
+&& !interaction.deferred
+){
+
+interaction.reply({
+content:"Error occurred.",
+ephemeral:true
+});
+
+}
+
+}
+
+});
+
+/* KEEP ALIVE */
+
 const app = express();
-app.get("/", (req, res) => res.send("Barcode bot running"));
-app.listen(process.env.PORT || 3000, () => console.log("Web server running."));
+
+app.get("/",(req,res)=>{
+res.send("Bot alive");
+});
+
+app.listen(3000);
+
+client.login(TOKEN);
