@@ -11,7 +11,8 @@ ActionRowBuilder,
 ModalBuilder,
 TextInputBuilder,
 TextInputStyle,
-StringSelectMenuBuilder
+StringSelectMenuBuilder,
+EmbedBuilder
 } = require("discord.js");
 
 const { createCanvas, loadImage } = require("canvas");
@@ -587,9 +588,24 @@ new ButtonBuilder()
 
 );
 
+const embed =
+new EmbedBuilder()
+.setTitle(
+panelType === "tesco"
+? "Tesco Barcode Generator"
+: "Sainsbury's Barcode Generator"
+)
+.setDescription(
+"Interact with the buttons below to generate barcodes or view your history."
+)
+.setColor(
+panelType === "tesco"
+? 0x00539f
+: 0xff7f00
+);
+
 return interaction.reply({
-content:
-`${panelType.toUpperCase()} PANEL`,
+embeds:[embed],
 components:[row]
 });
 
